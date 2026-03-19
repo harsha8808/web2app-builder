@@ -1,0 +1,286 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_id:
+        required: true
+      website_url:
+        required: true
+      app_name:
+        required: true
+      package_name:
+        required: true
+      version_name:
+        required: false
+        default: "1.0"
+      version_code:
+        required: false
+        default: "1"
+      admob_app_id:
+        required: true
+      banner_unit_id:
+        required: false
+        default: ""
+      interstitial_unit_id:
+        required: false
+        default: ""
+      rewarded_unit_id:
+        required: false
+        default: ""
+      app_open_unit_id:
+        required: false
+        default: ""
+      interstitial_frequency:
+        required: false
+        default: "3"
+      test_mode:
+        required: false
+        default: "false"
+      enable_banner:
+        required: false
+        default: "true"
+      enable_interstitial:
+        required: false
+        default: "true"
+      enable_rewarded:
+        required: false
+        default: "false"
+      enable_app_open:
+        required: false
+        default: "false"
+      enable_pull_to_refresh:
+        required: false
+        default: "true"
+      enable_offline_page:
+        required: false
+        default: "true"
+      enable_progress_bar:
+        required: false
+        default: "true"
+      enable_push:
+        required: false
+        default: "false"
+      splash_bg_color:
+        required: false
+        default: "#FFFFFF"
+      splash_duration:
+        required: false
+        default: "2000"
+      splash_tagline:
+        required: false
+        default: ""
+      app_icon_url:
+        required: false
+        default: ""
+      splash_logo_url:
+        required: false
+        default: ""
+      google_services_url:
+        required: false
+        default: ""
+      webhook_url:
+        required: true
+      webhook_secret:
+        required: true
+
+concurrency:
+  group: build-${{ github.event.inputs.build_id }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Notify — queued
+        run: |
+          curl -s -X POST "${{ github.event.inputs.webhook_url }}" \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: ${{ github.event.inputs.webhook_secret }}" \
+            -d '{"buildId":"${{ github.event.inputs.build_id }}","status":"building","step":"Runner started","progress":5}'
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: gradle-
+
+      - name: Download user assets
+        run: |
+          if [ -n "${{ github.event.inputs.app_icon_url }}" ]; then
+            for d in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
+              mkdir -p "app/src/main/res/$d"
+              curl -fsSL "${{ github.event.inputs.app_icon_url }}" \
+                -o "app/src/main/res/$d/ic_launcher.png"
+            done
+          fi
+          if [ -n "${{ github.event.inputs.splash_logo_url }}" ]; then
+            curl -fsSL "${{ github.event.inputs.splash_logo_url }}" \
+              -o app/src/main/res/drawable/splash_logo.png
+          fi
+          if [ -n "${{ github.event.inputs.google_services_url }}" ]; then
+            curl -fsSL "${{ github.event.inputs.google_services_url }}" \
+              -o app/google-services.json
+          fi
+
+      - name: Notify — injecting config
+        run: |
+          curl -s -X POST "${{ github.event.inputs.webhook_url }}" \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: ${{ github.event.inputs.webhook_secret }}" \
+            -d '{"buildId":"${{ github.event.inputs.build_id }}","status":"building","step":"Injecting configuration","progress":20}'
+
+      - name: Inject tokens
+        env:
+          APP_NAME:               ${{ github.event.inputs.app_name }}
+          PACKAGE_NAME:           ${{ github.event.inputs.package_name }}
+          VERSION_NAME:           ${{ github.event.inputs.version_name }}
+          VERSION_CODE:           ${{ github.event.inputs.version_code }}
+          WEBSITE_URL:            ${{ github.event.inputs.website_url }}
+          ADMOB_APP_ID:           ${{ github.event.inputs.admob_app_id }}
+          BANNER_UNIT_ID:         ${{ github.event.inputs.banner_unit_id }}
+          INTERSTITIAL_UNIT_ID:   ${{ github.event.inputs.interstitial_unit_id }}
+          REWARDED_UNIT_ID:       ${{ github.event.inputs.rewarded_unit_id }}
+          APP_OPEN_UNIT_ID:       ${{ github.event.inputs.app_open_unit_id }}
+          INTERSTITIAL_FREQUENCY: ${{ github.event.inputs.interstitial_frequency }}
+          TEST_MODE:              ${{ github.event.inputs.test_mode }}
+          ENABLE_BANNER:          ${{ github.event.inputs.enable_banner }}
+          ENABLE_INTERSTITIAL:    ${{ github.event.inputs.enable_interstitial }}
+          ENABLE_REWARDED:        ${{ github.event.inputs.enable_rewarded }}
+          ENABLE_APP_OPEN:        ${{ github.event.inputs.enable_app_open }}
+          ENABLE_PULL_TO_REFRESH: ${{ github.event.inputs.enable_pull_to_refresh }}
+          ENABLE_OFFLINE_PAGE:    ${{ github.event.inputs.enable_offline_page }}
+          ENABLE_PROGRESS_BAR:    ${{ github.event.inputs.enable_progress_bar }}
+          ENABLE_PUSH:            ${{ github.event.inputs.enable_push }}
+          SPLASH_BG_COLOR:        ${{ github.event.inputs.splash_bg_color }}
+          SPLASH_DURATION:        ${{ github.event.inputs.splash_duration }}
+          SPLASH_TAGLINE:         ${{ github.event.inputs.splash_tagline }}
+        run: node scripts/inject-tokens.js
+
+      - name: Apply package name
+        env:
+          PACKAGE_NAME: ${{ github.event.inputs.package_name }}
+        run: node scripts/apply-package.js
+
+      - name: Write keystore
+        run: |
+          mkdir -p keystore
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > keystore/release.jks
+          cat > keystore.properties << EOF
+          storeFile=../../keystore/release.jks
+          storePassword=${{ secrets.KEYSTORE_PASS }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          keyPassword=${{ secrets.KEY_PASS }}
+          EOF
+
+      - name: Notify — building
+        run: |
+          curl -s -X POST "${{ github.event.inputs.webhook_url }}" \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: ${{ github.event.inputs.webhook_secret }}" \
+            -d '{"buildId":"${{ github.event.inputs.build_id }}","status":"building","step":"Running Gradle build","progress":35}'
+
+      - name: Build APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Notify — signing
+        run: |
+          curl -s -X POST "${{ github.event.inputs.webhook_url }}" \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: ${{ github.event.inputs.webhook_secret }}" \
+            -d '{"buildId":"${{ github.event.inputs.build_id }}","status":"building","step":"Signing APK","progress":80}'
+
+      - name: Sign & align APK
+        run: |
+          UNSIGNED="app/build/outputs/apk/release/app-release-unsigned.apk"
+          SIGNED="/tmp/${{ github.event.inputs.build_id }}-signed.apk"
+          FINAL_NAME="${{ github.event.inputs.app_name }}_v${{ github.event.inputs.version_name }}.apk"
+          FINAL="/tmp/${FINAL_NAME// /_}"
+
+          jarsigner \
+            -verbose \
+            -sigalg SHA256withRSA \
+            -digestalg SHA-256 \
+            -keystore keystore/release.jks \
+            -storepass "${{ secrets.KEYSTORE_PASS }}" \
+            -keypass "${{ secrets.KEY_PASS }}" \
+            -signedjar "$SIGNED" \
+            "$UNSIGNED" \
+            "${{ secrets.KEY_ALIAS }}"
+
+          $ANDROID_HOME/build-tools/34.0.0/zipalign -v 4 "$SIGNED" "$FINAL"
+          echo "APK_PATH=$FINAL" >> $GITHUB_ENV
+          echo "APK_FILENAME=$(basename $FINAL)" >> $GITHUB_ENV
+
+      - name: Notify — uploading
+        run: |
+          curl -s -X POST "${{ github.event.inputs.webhook_url }}" \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: ${{ github.event.inputs.webhook_secret }}" \
+            -d '{"buildId":"${{ github.event.inputs.build_id }}","status":"building","step":"Uploading to storage","progress":88}'
+
+      - name: Upload APK to R2
+        id: r2
+        run: |
+          OBJECT_KEY="apks/${{ github.event.inputs.build_id }}/${{ env.APK_FILENAME }}"
+          curl -s -X PUT \
+            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/r2/buckets/${{ secrets.R2_BUCKET_NAME }}/objects/${OBJECT_KEY}" \
+            -H "Authorization: Bearer ${{ secrets.CF_R2_TOKEN }}" \
+            -H "Content-Type: application/vnd.android.package-archive" \
+            --data-binary "@${{ env.APK_PATH }}"
+          echo "DOWNLOAD_URL=https://${{ secrets.R2_PUBLIC_DOMAIN }}/${OBJECT_KEY}" >> $GITHUB_ENV
+          echo "OBJECT_KEY=$OBJECT_KEY" >> $GITHUB_ENV
+
+      - name: Notify — complete
+        if: success()
+        run: |
+          PAYLOAD=$(printf '{"buildId":"%s","status":"complete","step":"Build complete","progress":100,"downloadUrl":"%s","objectKey":"%s","apkFilename":"%s","completedAt":"%s"}' \
+            "${{ github.event.inputs.build_id }}" \
+            "${{ env.DOWNLOAD_URL }}" \
+            "${{ env.OBJECT_KEY }}" \
+            "${{ env.APK_FILENAME }}" \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
+          SIG=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "${{ github.event.inputs.webhook_secret }}" | awk '{print $2}')
+          curl -fsSL -X POST "${{ github.event.inputs.webhook_url }}" \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: ${{ github.event.inputs.webhook_secret }}" \
+            -H "X-Signature-SHA256: sha256=${SIG}" \
+            -d "$PAYLOAD"
+
+      - name: Notify — failed
+        if: failure()
+        run: |
+          PAYLOAD=$(printf '{"buildId":"%s","status":"failed","step":"Build failed","progress":0,"error":"Build failed. Logs: %s"}' \
+            "${{ github.event.inputs.build_id }}" \
+            "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
+          SIG=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "${{ github.event.inputs.webhook_secret }}" | awk '{print $2}')
+          curl -X POST "${{ github.event.inputs.webhook_url }}" \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: ${{ github.event.inputs.webhook_secret }}" \
+            -H "X-Signature-SHA256: sha256=${SIG}" \
+            -d "$PAYLOAD"
+
+      - name: Cleanup secrets from runner
+        if: always()
+        run: |
+          rm -f keystore/release.jks keystore.properties /tmp/*.apk
