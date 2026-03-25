@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  splash_logo.png will be replaced at build time with the user's uploaded logo.
+  This vector drawable is the fallback used during local development.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="160dp"
+    android:height="160dp"
+    android:viewportWidth="160"
+    android:viewportHeight="160">
+
+    <!-- Outer circle -->
+    <path
+        android:fillColor="#6200EE"
+        android:pathData="M80,80m-70,0a70,70 0,1 1,140 0a70,70 0,1 1,-140 0" />
+
+    <!-- White globe / web icon -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="
+          M80,40
+          A40,40 0 1 1 80,120
+          A40,40 0 1 1 80,40Z
+          M80,40 Q60,80 80,120 Q100,80 80,40Z
+          M40,80 L120,80
+          M43,62 Q80,72 117,62
+          M43,98 Q80,88 117,98"
+        android:strokeColor="#6200EE"
+        android:strokeWidth="2.5" />
+
+</vector>
