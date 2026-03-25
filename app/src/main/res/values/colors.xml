@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Primary brand color — used for progress bar and swipe refresh indicator -->
+    <color name="colorPrimary">#6200EE</color>
+    <color name="colorPrimaryDark">#3700B3</color>
+    <color name="colorAccent">#03DAC5</color>
+
+    <!-- WebView background — prevents white flash on load -->
+    <color name="colorBackground">#FFFFFF</color>
+
+    <!-- Splash screen — injected at build time -->
+    <color name="colorSplashBackground">{{SPLASH_BG_COLOR}}</color>
+
+    <!-- Splash tagline text color — auto-contrast against splash bg -->
+    <color name="colorSplashText">#333333</color>
+</resources>

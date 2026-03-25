@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="splash_logo_size">160dp</dimen>
+    <dimen name="splash_tagline_margin_top">16dp</dimen>
+    <dimen name="progress_bar_height">3dp</dimen>
+</resources>
