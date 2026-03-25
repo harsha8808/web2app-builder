@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Allow all HTTPS traffic (default) -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Allow cleartext (HTTP) only for the target website domain -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">{{WEBSITE_DOMAIN}}</domain>
+    </domain-config>
+</network-security-config>
