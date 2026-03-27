@@ -30,7 +30,7 @@ android {
 
     signingConfigs {
         release {
-            storeFile     file(keystoreProperties['storeFile']    ?: 'keystore/debug.jks')
+            storeFile     file("../" + (keystoreProperties['storeFile'] ?: 'keystore/debug.jks'))
             storePassword keystoreProperties['storePassword']     ?: 'android'
             keyAlias      keystoreProperties['keyAlias']          ?: 'androiddebugkey'
             keyPassword   keystoreProperties['keyPassword']       ?: 'android'
