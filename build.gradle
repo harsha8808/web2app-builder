@@ -1,15 +1,90 @@
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
+plugins {
+    id 'com.android.application'
+    id 'kotlin-android'
+}
+
+// Only apply Google Services plugin if google-services.json exists
+// This allows builds without Firebase (when push notifications are disabled)
+if (file("google-services.json").exists()) {
+    apply plugin: 'com.google.gms.google-services'
+}
+
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+android {
+    namespace "{{PACKAGE_NAME}}"
+    compileSdk 34
+
+    defaultConfig {
+        applicationId      "{{PACKAGE_NAME}}"
+        minSdk             21
+        targetSdk          34
+        versionCode        {{VERSION_CODE}}
+        versionName        "{{VERSION_NAME}}"
+        multiDexEnabled    true
     }
-    dependencies {
-        classpath 'com.android.tools.build:gradle:8.3.0'
-        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.22'
-        classpath 'com.google.gms:google-services:4.4.1'
+
+    signingConfigs {
+        release {
+            storeFile     file(keystoreProperties['storeFile']    ?: 'keystore/debug.jks')
+            storePassword keystoreProperties['storePassword']     ?: 'android'
+            keyAlias      keystoreProperties['keyAlias']          ?: 'androiddebugkey'
+            keyPassword   keystoreProperties['keyPassword']       ?: 'android'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled  false
+            signingConfig  signingConfigs.release
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            applicationIdSuffix ".debug"
+            debuggable true
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    buildFeatures {
+        viewBinding true
+    }
+
+    packagingOptions {
+        resources {
+            excludes += '/META-INF/{AL2.0,LGPL2.1}'
+        }
     }
 }
 
-task clean(type: Delete) {
-    delete rootProject.buildDir
+dependencies {
+    // Core Android
+    implementation 'androidx.core:core-ktx:1.12.0'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
+    implementation 'androidx.multidex:multidex:2.0.1'
+
+    // AdMob
+    implementation 'com.google.android.gms:play-services-ads:23.0.0'
+
+    // Firebase — only included when google-services.json is present
+    if (file("google-services.json").exists()) {
+        implementation platform('com.google.firebase:firebase-bom:33.0.0')
+        implementation 'com.google.firebase:firebase-messaging-ktx'
+        implementation 'com.google.firebase:firebase-analytics-ktx'
+    }
 }
