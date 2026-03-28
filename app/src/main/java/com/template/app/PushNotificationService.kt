@@ -3,71 +3,61 @@ package {{PACKAGE_NAME}}
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.Service
 import android.content.Intent
 import android.os.Build
+import android.os.IBinder
 import androidx.core.app.NotificationCompat
-import com.google.firebase.messaging.FirebaseMessagingService
-import com.google.firebase.messaging.RemoteMessage
 
-class PushNotificationService : FirebaseMessagingService() {
+/**
+ * Push notification service stub.
+ * When ENABLE_PUSH is true and google-services.json is provided,
+ * this class will be replaced by the Firebase FCM implementation.
+ * This stub ensures the project compiles without Firebase dependencies.
+ */
+class PushNotificationService : Service() {
 
     companion object {
-        private const val CHANNEL_ID   = "web2app_channel"
-        private const val CHANNEL_NAME = "App Notifications"
-    }
+        const val CHANNEL_ID = "web2app_channel"
+        const val CHANNEL_NAME = "App Notifications"
 
-    override fun onMessageReceived(message: RemoteMessage) {
-        super.onMessageReceived(message)
+        fun showNotification(
+            context: android.content.Context,
+            title: String,
+            body: String,
+            url: String
+        ) {
+            val manager = context.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
 
-        val title = message.notification?.title
-            ?: message.data["title"]
-            ?: getString(R.string.app_name)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_HIGH
+                )
+                manager.createNotificationChannel(channel)
+            }
 
-        val body  = message.notification?.body
-            ?: message.data["body"]
-            ?: ""
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra("push_url", url)
+            }
 
-        val url   = message.data["url"] ?: "{{WEBSITE_URL}}"
+            val pendingIntent = PendingIntent.getActivity(
+                context, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
 
-        showNotification(title, body, url)
-    }
+            val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setContentIntent(pendingIntent)
+                .build()
 
-    private fun showNotification(title: String, body: String, url: String) {
-        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply { description = "Push notifications from {{APP_NAME}}" }
-            manager.createNotificationChannel(channel)
+            manager.notify(System.currentTimeMillis().toInt(), notification)
         }
-
-        val intent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra("push_url", url)
-        }
-
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setContentIntent(pendingIntent)
-            .build()
-
-        manager.notify(System.currentTimeMillis().toInt(), notification)
     }
 
-    override fun onNewToken(token: String) {
-        super.onNewToken(token)
-        // TODO: send token to your backend to store per-user for targeted push
-    }
+    override fun onBind(intent: Intent?): IBinder? = null
 }
