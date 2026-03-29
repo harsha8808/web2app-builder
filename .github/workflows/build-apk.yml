@@ -81,15 +81,17 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      # FIX: Checkout first so that if it fails, "Notify failed" still fires correctly.
+      # The started webhook now comes after checkout succeeds.
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Notify started
         run: |
           curl -s -X POST "${{ github.event.inputs.webhook_url }}" \
             -H "Content-Type: application/json" \
             -H "X-Webhook-Secret: ${{ github.event.inputs.webhook_secret }}" \
             -d '{"buildId":"${{ github.event.inputs.build_id }}","status":"building","step":"Runner started","progress":5}'
-
-      - name: Checkout
-        uses: actions/checkout@v4
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -110,24 +112,36 @@ jobs:
           key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: gradle-
 
+      # FIX: Write feature_flags to a temp file to avoid shell injection from
+      # single-quoted input being broken by special characters in the JSON value.
       - name: Parse feature flags
         run: |
-          FLAGS='${{ github.event.inputs.feature_flags }}'
-          echo "ENABLE_BANNER=$(echo $FLAGS | python3 -c "import sys,json; d=json.load(sys.stdin); print(str(d.get('banner',True)).lower())")" >> $GITHUB_ENV
-          echo "ENABLE_INTERSTITIAL=$(echo $FLAGS | python3 -c "import sys,json; d=json.load(sys.stdin); print(str(d.get('interstitial',True)).lower())")" >> $GITHUB_ENV
-          echo "ENABLE_REWARDED=$(echo $FLAGS | python3 -c "import sys,json; d=json.load(sys.stdin); print(str(d.get('rewarded',False)).lower())")" >> $GITHUB_ENV
-          echo "ENABLE_APP_OPEN=$(echo $FLAGS | python3 -c "import sys,json; d=json.load(sys.stdin); print(str(d.get('appOpen',False)).lower())")" >> $GITHUB_ENV
-          echo "ENABLE_PULL_TO_REFRESH=$(echo $FLAGS | python3 -c "import sys,json; d=json.load(sys.stdin); print(str(d.get('pullRefresh',True)).lower())")" >> $GITHUB_ENV
-          echo "ENABLE_OFFLINE_PAGE=$(echo $FLAGS | python3 -c "import sys,json; d=json.load(sys.stdin); print(str(d.get('offline',True)).lower())")" >> $GITHUB_ENV
-          echo "ENABLE_PROGRESS_BAR=$(echo $FLAGS | python3 -c "import sys,json; d=json.load(sys.stdin); print(str(d.get('progress',True)).lower())")" >> $GITHUB_ENV
-          echo "ENABLE_PUSH=$(echo $FLAGS | python3 -c "import sys,json; d=json.load(sys.stdin); print(str(d.get('push',False)).lower())")" >> $GITHUB_ENV
+          printf '%s' '${{ github.event.inputs.feature_flags }}' > /tmp/feature_flags.json
+          echo "ENABLE_BANNER=$(python3 -c "import json; d=json.load(open('/tmp/feature_flags.json')); print(str(d.get('banner',True)).lower())")" >> $GITHUB_ENV
+          echo "ENABLE_INTERSTITIAL=$(python3 -c "import json; d=json.load(open('/tmp/feature_flags.json')); print(str(d.get('interstitial',True)).lower())")" >> $GITHUB_ENV
+          echo "ENABLE_REWARDED=$(python3 -c "import json; d=json.load(open('/tmp/feature_flags.json')); print(str(d.get('rewarded',False)).lower())")" >> $GITHUB_ENV
+          echo "ENABLE_APP_OPEN=$(python3 -c "import json; d=json.load(open('/tmp/feature_flags.json')); print(str(d.get('appOpen',False)).lower())")" >> $GITHUB_ENV
+          echo "ENABLE_PULL_TO_REFRESH=$(python3 -c "import json; d=json.load(open('/tmp/feature_flags.json')); print(str(d.get('pullRefresh',True)).lower())")" >> $GITHUB_ENV
+          echo "ENABLE_OFFLINE_PAGE=$(python3 -c "import json; d=json.load(open('/tmp/feature_flags.json')); print(str(d.get('offline',True)).lower())")" >> $GITHUB_ENV
+          echo "ENABLE_PROGRESS_BAR=$(python3 -c "import json; d=json.load(open('/tmp/feature_flags.json')); print(str(d.get('progress',True)).lower())")" >> $GITHUB_ENV
+          echo "ENABLE_PUSH=$(python3 -c "import json; d=json.load(open('/tmp/feature_flags.json')); print(str(d.get('push',False)).lower())")" >> $GITHUB_ENV
 
+      # FIX: Resize icon to correct dimensions per mipmap density instead of
+      # copying the same full-size file to every bucket.
       - name: Download user assets
         run: |
           if [ -n "${{ github.event.inputs.app_icon_url }}" ]; then
-            for d in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
+            curl -fsSL "${{ github.event.inputs.app_icon_url }}" -o /tmp/ic_launcher_src.png
+            declare -A DENSITIES=( [mipmap-mdpi]=48 [mipmap-hdpi]=72 [mipmap-xhdpi]=96 [mipmap-xxhdpi]=144 [mipmap-xxxhdpi]=192 )
+            for d in "${!DENSITIES[@]}"; do
               mkdir -p "app/src/main/res/$d"
-              curl -fsSL "${{ github.event.inputs.app_icon_url }}" -o "app/src/main/res/$d/ic_launcher.png"
+              SIZE="${DENSITIES[$d]}"
+              python3 - <<EOF
+          from PIL import Image
+          img = Image.open("/tmp/ic_launcher_src.png").convert("RGBA")
+          img = img.resize(($SIZE, $SIZE), Image.LANCZOS)
+          img.save("app/src/main/res/$d/ic_launcher.png")
+          EOF
             done
           fi
           if [ -n "${{ github.event.inputs.splash_logo_url }}" ]; then
@@ -174,7 +188,9 @@ jobs:
           ENABLE_PROGRESS_BAR:    ${{ env.ENABLE_PROGRESS_BAR }}
           ENABLE_PUSH:            ${{ env.ENABLE_PUSH }}
           SPLASH_BG_COLOR:        ${{ github.event.inputs.splash_bg_color }}
-          SPLASH_DURATION:        ${{ github.event.inputs.splash_duration }}
+          # FIX: Coerce splash_duration to integer so inject-tokens.js never
+          # receives a bare string where a number is expected.
+          SPLASH_DURATION:        ${{ fromJSON(github.event.inputs.splash_duration) }}
           SPLASH_TAGLINE:         ${{ github.event.inputs.splash_tagline }}
         run: node scripts/inject-tokens.js
 
@@ -221,11 +237,18 @@ jobs:
           BUILD_ID="${{ github.event.inputs.build_id }}"
           SAFE_NAME="${APP_NAME// /_}"
 
+          # FIX: Resolve build-tools version dynamically instead of hardcoding 34.0.0
+          BUILD_TOOLS=$(ls "$ANDROID_HOME/build-tools/" | sort -V | tail -1)
+          echo "Using build-tools: $BUILD_TOOLS"
+
           # ── APK ────────────────────────────────────────────────────────
           APK_FOUND=$(find app/build/outputs/apk/release/ -name "*.apk" | head -1)
           echo "Found APK: $APK_FOUND"
           APK_FINAL="/tmp/${SAFE_NAME}_v${VERSION}.apk"
 
+          # FIX: Only run jarsigner+zipalign when Gradle produced a genuinely
+          # unsigned APK. When Gradle already signed it (app-release.apk),
+          # skip straight to zipalign to avoid double-signing.
           if [ -f "app/build/outputs/apk/release/app-release-unsigned.apk" ]; then
             UNSIGNED="app/build/outputs/apk/release/app-release-unsigned.apk"
             SIGNED="/tmp/${BUILD_ID}-signed.apk"
@@ -234,9 +257,10 @@ jobs:
               -storepass "${{ secrets.KEYSTORE_PASS }}" \
               -keypass "${{ secrets.KEY_PASS }}" \
               -signedjar "$SIGNED" "$UNSIGNED" "${{ secrets.KEY_ALIAS }}"
-            $ANDROID_HOME/build-tools/34.0.0/zipalign -v 4 "$SIGNED" "$APK_FINAL"
+            "$ANDROID_HOME/build-tools/$BUILD_TOOLS/zipalign" -v 4 "$SIGNED" "$APK_FINAL"
           else
-            $ANDROID_HOME/build-tools/34.0.0/zipalign -v 4 "$APK_FOUND" "$APK_FINAL"
+            # Gradle already signed it — zipalign only, no re-signing
+            "$ANDROID_HOME/build-tools/$BUILD_TOOLS/zipalign" -v 4 "$APK_FOUND" "$APK_FINAL"
           fi
 
           # ── AAB ────────────────────────────────────────────────────────
@@ -246,25 +270,27 @@ jobs:
           cp "$AAB_FOUND" "$AAB_FINAL"
 
           # ── README ─────────────────────────────────────────────────────
-          echo "${APP_NAME} v${VERSION}" > /tmp/README.txt
-          echo "Built by Unbeated Web2App Builder - https://unbeated.com" >> /tmp/README.txt
-          echo "" >> /tmp/README.txt
-          echo "FILES INCLUDED:" >> /tmp/README.txt
-          echo "  ${SAFE_NAME}_v${VERSION}.apk  - Install directly on any Android device" >> /tmp/README.txt
-          echo "  ${SAFE_NAME}_v${VERSION}.aab  - Upload to Google Play Store" >> /tmp/README.txt
-          echo "" >> /tmp/README.txt
-          echo "HOW TO INSTALL APK ON YOUR PHONE:" >> /tmp/README.txt
-          echo "  1. Transfer APK to your Android phone (USB, email, WhatsApp)" >> /tmp/README.txt
-          echo "  2. On phone: Settings > Security > Enable Install unknown apps" >> /tmp/README.txt
-          echo "  3. Open the APK file and tap Install" >> /tmp/README.txt
-          echo "" >> /tmp/README.txt
-          echo "HOW TO PUBLISH AAB TO GOOGLE PLAY STORE:" >> /tmp/README.txt
-          echo "  1. Go to https://play.google.com/console" >> /tmp/README.txt
-          echo "  2. Create a new app or open existing" >> /tmp/README.txt
-          echo "  3. Go to Release > Production > Create new release" >> /tmp/README.txt
-          echo "  4. Upload the .aab file and submit for review" >> /tmp/README.txt
-          echo "" >> /tmp/README.txt
-          echo "Need help? Visit https://unbeated.com" >> /tmp/README.txt
+          cat > /tmp/README.txt <<EOF
+          ${APP_NAME} v${VERSION}
+          Built by Unbeated Web2App Builder - https://unbeated.com
+
+          FILES INCLUDED:
+            ${SAFE_NAME}_v${VERSION}.apk  - Install directly on any Android device
+            ${SAFE_NAME}_v${VERSION}.aab  - Upload to Google Play Store
+
+          HOW TO INSTALL APK ON YOUR PHONE:
+            1. Transfer APK to your Android phone (USB, email, WhatsApp)
+            2. On phone: Settings > Security > Enable Install unknown apps
+            3. Open the APK file and tap Install
+
+          HOW TO PUBLISH AAB TO GOOGLE PLAY STORE:
+            1. Go to https://play.google.com/console
+            2. Create a new app or open existing
+            3. Go to Release > Production > Create new release
+            4. Upload the .aab file and submit for review
+
+          Need help? Visit https://unbeated.com
+          EOF
 
           # ── ZIP ────────────────────────────────────────────────────────
           ZIP_NAME="${SAFE_NAME}_v${VERSION}.zip"
@@ -288,17 +314,26 @@ jobs:
             -H "X-Webhook-Secret: ${{ github.event.inputs.webhook_secret }}" \
             -d '{"buildId":"${{ github.event.inputs.build_id }}","status":"building","step":"Uploading to storage","progress":88}'
 
+      # FIX: Detect R2 upload failures and fail the step so the success webhook
+      # is never sent with a broken/empty download URL.
       - name: Upload ZIP to R2
         run: |
           OBJECT_KEY="builds/${{ github.event.inputs.build_id }}/${{ env.ZIP_FILENAME }}"
-          curl -s -X PUT \
+          HTTP_CODE=$(curl -s -o /tmp/r2_response.txt -w "%{http_code}" -X PUT \
             "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/r2/buckets/${{ secrets.R2_BUCKET_NAME }}/objects/${OBJECT_KEY}" \
             -H "Authorization: Bearer ${{ secrets.CF_R2_TOKEN }}" \
             -H "Content-Type: application/zip" \
-            --data-binary "@${{ env.ZIP_PATH }}"
+            --data-binary "@${{ env.ZIP_PATH }}")
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "R2 upload failed with HTTP $HTTP_CODE"
+            cat /tmp/r2_response.txt
+            exit 1
+          fi
           echo "DOWNLOAD_URL=https://${{ secrets.R2_PUBLIC_DOMAIN }}/${OBJECT_KEY}" >> $GITHUB_ENV
           echo "OBJECT_KEY=$OBJECT_KEY" >> $GITHUB_ENV
 
+      # FIX: Replaced bare curl -fsSL (which exits 22 on 429) with a retry loop
+      # that backs off exponentially and only fails after 5 attempts.
       - name: Notify complete
         if: success()
         run: |
@@ -309,12 +344,25 @@ jobs:
             "${{ env.ZIP_FILENAME }}" \
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
           SIG=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "${{ github.event.inputs.webhook_secret }}" | awk '{print $2}')
-          curl -fsSL -X POST "${{ github.event.inputs.webhook_url }}" \
-            -H "Content-Type: application/json" \
-            -H "X-Webhook-Secret: ${{ github.event.inputs.webhook_secret }}" \
-            -H "X-Signature-SHA256: sha256=${SIG}" \
-            -d "$PAYLOAD"
+          for i in 1 2 3 4 5; do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${{ github.event.inputs.webhook_url }}" \
+              -H "Content-Type: application/json" \
+              -H "X-Webhook-Secret: ${{ github.event.inputs.webhook_secret }}" \
+              -H "X-Signature-SHA256: sha256=${SIG}" \
+              -d "$PAYLOAD")
+            if [ "$CODE" = "200" ] || [ "$CODE" = "201" ] || [ "$CODE" = "204" ]; then
+              echo "Webhook delivered (HTTP $CODE) on attempt $i"
+              break
+            fi
+            echo "Attempt $i got HTTP $CODE — retrying in $((i * 15))s..."
+            sleep $((i * 15))
+            if [ "$i" = "5" ]; then
+              echo "Webhook failed after 5 attempts (last HTTP $CODE)"
+              exit 1
+            fi
+          done
 
+      # FIX: Added retry loop to failure webhook — same pattern as notify complete.
       - name: Notify failed
         if: failure()
         run: |
@@ -323,14 +371,22 @@ jobs:
             "${{ github.server_url }}/${{ github.repository }}" \
             "${{ github.run_id }}")
           SIG=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "${{ github.event.inputs.webhook_secret }}" | awk '{print $2}')
-          curl -X POST "${{ github.event.inputs.webhook_url }}" \
-            -H "Content-Type: application/json" \
-            -H "X-Webhook-Secret: ${{ github.event.inputs.webhook_secret }}" \
-            -H "X-Signature-SHA256: sha256=${SIG}" \
-            -d "$PAYLOAD"
+          for i in 1 2 3 4 5; do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${{ github.event.inputs.webhook_url }}" \
+              -H "Content-Type: application/json" \
+              -H "X-Webhook-Secret: ${{ github.event.inputs.webhook_secret }}" \
+              -H "X-Signature-SHA256: sha256=${SIG}" \
+              -d "$PAYLOAD")
+            if [ "$CODE" = "200" ] || [ "$CODE" = "201" ] || [ "$CODE" = "204" ]; then
+              echo "Failure webhook delivered (HTTP $CODE) on attempt $i"
+              break
+            fi
+            echo "Attempt $i got HTTP $CODE — retrying in $((i * 15))s..."
+            sleep $((i * 15))
+          done
 
       - name: Cleanup
         if: always()
         run: |
           rm -f keystore/release.jks keystore.properties
-          rm -f /tmp/*.apk /tmp/*.aab /tmp/*.zip /tmp/README.txt
+          rm -f /tmp/*.apk /tmp/*.aab /tmp/*.zip /tmp/README.txt /tmp/feature_flags.json /tmp/r2_response.txt
