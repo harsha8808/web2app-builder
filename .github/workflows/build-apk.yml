@@ -137,6 +137,19 @@ jobs:
             curl -fsSL "${{ github.event.inputs.google_services_url }}" -o app/google-services.json
           fi
 
+      - name: Write keystore
+        run: |
+          mkdir -p keystore
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | tr -d '\r\n ' | base64 --decode > keystore/release.jks
+          KEYSTORE_ABS="$(pwd)/keystore/release.jks"
+          printf "storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n" \
+            "$KEYSTORE_ABS" \
+            "${{ secrets.KEYSTORE_PASS }}" \
+            "${{ secrets.KEY_ALIAS }}" \
+            "${{ secrets.KEY_PASS }}" > keystore.properties
+          echo "Keystore written: $KEYSTORE_ABS"
+          ls -la keystore/
+
       - name: Notify injecting config
         run: |
           curl -s -X POST "${{ github.event.inputs.webhook_url }}" \
@@ -175,17 +188,6 @@ jobs:
         env:
           PACKAGE_NAME: ${{ github.event.inputs.package_name }}
         run: node scripts/apply-package.js
-
-      - name: Write keystore
-        run: |
-          mkdir -p keystore
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | tr -d '\r\n ' | base64 --decode > keystore/release.jks
-          cat > keystore.properties << EOF
-          storeFile=../../keystore/release.jks
-          storePassword=${{ secrets.KEYSTORE_PASS }}
-          keyAlias=${{ secrets.KEY_ALIAS }}
-          keyPassword=${{ secrets.KEY_PASS }}
-          EOF
 
       - name: Notify building
         run: |
