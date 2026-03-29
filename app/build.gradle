@@ -3,16 +3,8 @@ plugins {
     id 'kotlin-android'
 }
 
-// Only apply Google Services plugin if google-services.json exists
-// This allows builds without Firebase (when push notifications are disabled)
 if (file("google-services.json").exists()) {
     apply plugin: 'com.google.gms.google-services'
-}
-
-def keystorePropertiesFile = rootProject.file("keystore.properties")
-def keystoreProperties = new Properties()
-if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
 
 android {
@@ -28,20 +20,12 @@ android {
         multiDexEnabled    true
     }
 
-    signingConfigs {
-        release {
-            storeFile     file("../" + (keystoreProperties['storeFile'] ?: 'keystore/debug.jks'))
-            storePassword keystoreProperties['storePassword']     ?: 'android'
-            keyAlias      keystoreProperties['keyAlias']          ?: 'androiddebugkey'
-            keyPassword   keystoreProperties['keyPassword']       ?: 'android'
-        }
-    }
-
     buildTypes {
         release {
-            minifyEnabled  false
-            signingConfig  signingConfigs.release
+            minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // Signing is handled via -P flags passed by GitHub Actions workflow
+            // This avoids keystore path resolution issues at configuration time
         }
         debug {
             applicationIdSuffix ".debug"
@@ -70,8 +54,6 @@ android {
 }
 
 dependencies {
-    // Core Android
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
