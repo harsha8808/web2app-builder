@@ -241,28 +241,25 @@ jobs:
           cp "$AAB_FOUND" "$AAB_FINAL"
 
           # ── README ─────────────────────────────────────────────────────
-          cat > /tmp/README.txt << README
-${APP_NAME} v${VERSION}
-Built by Unbeated Web2App Builder — https://unbeated.com
-
-FILES INCLUDED:
-  ${SAFE_NAME}_v${VERSION}.apk  — Install directly on any Android device
-  ${SAFE_NAME}_v${VERSION}.aab  — Upload to Google Play Store
-
-HOW TO INSTALL APK ON YOUR PHONE:
-  1. Transfer APK to your Android phone (USB, email, WhatsApp)
-  2. On phone: Settings > Security > Enable "Install unknown apps"
-  3. Open the APK file and tap Install
-
-HOW TO PUBLISH AAB TO GOOGLE PLAY STORE:
-  1. Go to https://play.google.com/console
-  2. Create a new app (or open existing)
-  3. Go to Release > Production > Create new release
-  4. Upload the .aab file
-  5. Fill in release details and submit for review
-
-Need help? Visit https://unbeated.com
-README
+          echo "${APP_NAME} v${VERSION}" > /tmp/README.txt
+          echo "Built by Unbeated Web2App Builder - https://unbeated.com" >> /tmp/README.txt
+          echo "" >> /tmp/README.txt
+          echo "FILES INCLUDED:" >> /tmp/README.txt
+          echo "  ${SAFE_NAME}_v${VERSION}.apk  - Install directly on any Android device" >> /tmp/README.txt
+          echo "  ${SAFE_NAME}_v${VERSION}.aab  - Upload to Google Play Store" >> /tmp/README.txt
+          echo "" >> /tmp/README.txt
+          echo "HOW TO INSTALL APK ON YOUR PHONE:" >> /tmp/README.txt
+          echo "  1. Transfer APK to your Android phone (USB, email, WhatsApp)" >> /tmp/README.txt
+          echo "  2. On phone: Settings > Security > Enable Install unknown apps" >> /tmp/README.txt
+          echo "  3. Open the APK file and tap Install" >> /tmp/README.txt
+          echo "" >> /tmp/README.txt
+          echo "HOW TO PUBLISH AAB TO GOOGLE PLAY STORE:" >> /tmp/README.txt
+          echo "  1. Go to https://play.google.com/console" >> /tmp/README.txt
+          echo "  2. Create a new app or open existing" >> /tmp/README.txt
+          echo "  3. Go to Release > Production > Create new release" >> /tmp/README.txt
+          echo "  4. Upload the .aab file and submit for review" >> /tmp/README.txt
+          echo "" >> /tmp/README.txt
+          echo "Need help? Visit https://unbeated.com" >> /tmp/README.txt
 
           # ── ZIP ────────────────────────────────────────────────────────
           ZIP_NAME="${SAFE_NAME}_v${VERSION}.zip"
