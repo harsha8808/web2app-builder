@@ -141,14 +141,14 @@ jobs:
         run: |
           mkdir -p keystore
           echo "${{ secrets.KEYSTORE_BASE64 }}" | tr -d '\r\n ' | base64 --decode > keystore/release.jks
-          KEYSTORE_ABS="$(pwd)/keystore/release.jks"
-          printf "storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n" \
-            "$KEYSTORE_ABS" \
-            "${{ secrets.KEYSTORE_PASS }}" \
-            "${{ secrets.KEY_ALIAS }}" \
-            "${{ secrets.KEY_PASS }}" > keystore.properties
-          echo "Keystore written: $KEYSTORE_ABS"
+          # Use hardcoded GitHub Actions runner path — always consistent
+          echo "storeFile=/home/runner/work/web2app-builder/web2app-builder/keystore/release.jks" > keystore.properties
+          echo "storePassword=${{ secrets.KEYSTORE_PASS }}" >> keystore.properties
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> keystore.properties
+          echo "keyPassword=${{ secrets.KEY_PASS }}" >> keystore.properties
+          echo "Keystore written, verifying..."
           ls -la keystore/
+          cat keystore.properties
 
       - name: Notify injecting config
         run: |
