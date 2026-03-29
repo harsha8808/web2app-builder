@@ -7,93 +7,69 @@ on:
   workflow_dispatch:
     inputs:
       build_id:
-        description: "Unique build ID — e.g. build-001 (must be unique per build)"
+        description: "Unique build ID"
         required: true
-        default: "build-001"
       website_url:
-        description: "Website URL to wrap — e.g. https://yourwebsite.com"
+        description: "Website URL"
         required: true
-        default: "https://yourwebsite.com"
       app_name:
-        description: "App display name shown on phone — e.g. My Awesome App"
+        description: "App display name"
         required: true
-        default: "My Awesome App"
       package_name:
-        description: "Android package name — e.g. com.yourcompany.appname (lowercase, no spaces)"
+        description: "Android package name"
         required: true
-        default: "com.yourcompany.appname"
       version_name:
-        description: "App version shown to users — e.g. 1.0"
         required: false
         default: "1.0"
       version_code:
-        description: "Internal version number, increment each release — e.g. 1"
         required: false
         default: "1"
       admob_app_id:
-        description: "AdMob App ID from Google AdMob console — e.g. ca-app-pub-XXXXXXXXXXXXXXXX~XXXXXXXXXX"
         required: true
-        default: "ca-app-pub-3940256099942544~3347511713"
       banner_unit_id:
-        description: "AdMob Banner ad unit ID — e.g. ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX (leave blank to disable)"
         required: false
         default: ""
       interstitial_unit_id:
-        description: "AdMob Interstitial ad unit ID — e.g. ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX (leave blank to disable)"
         required: false
         default: ""
       rewarded_unit_id:
-        description: "AdMob Rewarded ad unit ID — e.g. ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX (leave blank to disable)"
         required: false
         default: ""
       app_open_unit_id:
-        description: "AdMob App Open ad unit ID — e.g. ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX (leave blank to disable)"
         required: false
         default: ""
       interstitial_frequency:
-        description: "Show interstitial ad every N page loads — e.g. 3 means every 3rd page"
         required: false
         default: "3"
       test_mode:
-        description: "Use AdMob test ads? Set true during development, false for production"
         required: false
         default: "false"
       splash_bg_color:
-        description: "Splash screen background color (hex) — e.g. #FFFFFF for white, #000000 for black"
         required: false
         default: "#FFFFFF"
       splash_duration:
-        description: "Splash screen duration in milliseconds — e.g. 2000 = 2 seconds"
         required: false
         default: "2000"
       splash_tagline:
-        description: "Tagline shown on splash screen — e.g. Welcome to My App (leave blank for none)"
         required: false
         default: ""
       app_icon_url:
-        description: "Direct URL to app icon PNG (512x512 recommended) — e.g. https://yoursite.com/icon.png"
         required: false
         default: ""
       splash_logo_url:
-        description: "Direct URL to splash screen logo PNG — e.g. https://yoursite.com/logo.png (leave blank to use icon)"
         required: false
         default: ""
       google_services_url:
-        description: "Direct URL to google-services.json (required only if push notifications enabled) — e.g. https://yoursite.com/google-services.json"
         required: false
         default: ""
       feature_flags:
-        description: 'Enable/disable features as JSON — banner/interstitial/rewarded/appOpen/pullRefresh/offline/progress/push'
+        description: 'JSON e.g. {"banner":true,"interstitial":true,"rewarded":false,"appOpen":false,"pullRefresh":true,"offline":true,"progress":true,"push":false}'
         required: false
         default: '{"banner":true,"interstitial":true,"rewarded":false,"appOpen":false,"pullRefresh":true,"offline":true,"progress":true,"push":false}'
       webhook_url:
-        description: "URL to receive build status updates — Get a free test URL from webhook.site | pipedream.com | or your own backend"
         required: true
-        default: "https://webhook.site/your-unique-url-here"
       webhook_secret:
-        description: "Secret key to verify webhook requests — any random string e.g. my-secret-key-123"
         required: true
-        default: "my-secret-key-123"
 
 concurrency:
   group: build-${{ github.event.inputs.build_id }}
@@ -261,18 +237,31 @@ jobs:
           BUILD_ID="${{ github.event.inputs.build_id }}"
           SAFE_NAME="${APP_NAME// /_}"
 
+          # FIX: Resolve build-tools version dynamically instead of hardcoding 34.0.0
+          BUILD_TOOLS=$(ls "$ANDROID_HOME/build-tools/" | sort -V | tail -1)
+          echo "Using build-tools: $BUILD_TOOLS"
+
           # ── APK ────────────────────────────────────────────────────────
-          # Gradle already signs + zipaligns the APK when signing params are
-          # passed via -P flags. Just copy it — no jarsigner or zipalign needed.
-          APK_FOUND=$(find app/build/outputs/apk/release/ -name "app-release.apk" | head -1)
-          if [ -z "$APK_FOUND" ]; then
-            echo "ERROR: app-release.apk not found!"
-            find app/build/outputs/apk/ -name "*.apk"
-            exit 1
-          fi
+          APK_FOUND=$(find app/build/outputs/apk/release/ -name "*.apk" | head -1)
           echo "Found APK: $APK_FOUND"
           APK_FINAL="/tmp/${SAFE_NAME}_v${VERSION}.apk"
-          cp "$APK_FOUND" "$APK_FINAL"
+
+          # FIX: Only run jarsigner+zipalign when Gradle produced a genuinely
+          # unsigned APK. When Gradle already signed it (app-release.apk),
+          # skip straight to zipalign to avoid double-signing.
+          if [ -f "app/build/outputs/apk/release/app-release-unsigned.apk" ]; then
+            UNSIGNED="app/build/outputs/apk/release/app-release-unsigned.apk"
+            SIGNED="/tmp/${BUILD_ID}-signed.apk"
+            jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+              -keystore keystore/release.jks \
+              -storepass "${{ secrets.KEYSTORE_PASS }}" \
+              -keypass "${{ secrets.KEY_PASS }}" \
+              -signedjar "$SIGNED" "$UNSIGNED" "${{ secrets.KEY_ALIAS }}"
+            "$ANDROID_HOME/build-tools/$BUILD_TOOLS/zipalign" -v 4 "$SIGNED" "$APK_FINAL"
+          else
+            # Gradle already signed it — zipalign only, no re-signing
+            "$ANDROID_HOME/build-tools/$BUILD_TOOLS/zipalign" -v 4 "$APK_FOUND" "$APK_FINAL"
+          fi
 
           # ── AAB ────────────────────────────────────────────────────────
           AAB_FOUND=$(find app/build/outputs/bundle/release/ -name "*.aab" | head -1)
