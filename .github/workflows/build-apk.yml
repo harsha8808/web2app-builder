@@ -299,34 +299,34 @@ jobs:
           cp "$AAB_FOUND" "$AAB_FINAL"
 
           # ── README ─────────────────────────────────────────────────────
-          PKG_NAME="${{ env.PACKAGE_NAME }}"
-          cat > /tmp/README.txt <<EOF
-${APP_NAME} v${VERSION}
-Built by Unbeated Web2App Builder - https://unbeated.com
-
-APP DETAILS:
-  App Name:     ${APP_NAME}
-  Package Name: ${PKG_NAME}
-  Version:      ${VERSION}
-
-FILES INCLUDED:
-  ${SAFE_NAME}_v${VERSION}.apk  - Install directly on any Android device
-  ${SAFE_NAME}_v${VERSION}.aab  - Upload to Google Play Store
-
-HOW TO INSTALL APK ON YOUR PHONE:
-  1. Transfer APK to your Android phone (USB, email, WhatsApp)
-  2. On phone: Settings > Security > Enable "Install unknown apps"
-  3. Open the APK file and tap Install
-
-HOW TO PUBLISH AAB TO GOOGLE PLAY STORE:
-  1. Go to https://play.google.com/console
-  2. Create a new app or open existing
-  3. Go to Release > Production > Create new release
-  4. Upload the .aab file and submit for review
-  NOTE: Use package name "${PKG_NAME}" when creating the app on Play Store
-
-Need help? Visit https://unbeated.com
-EOF
+          PKG_NAME="${PACKAGE_NAME}"
+          {
+            echo "${APP_NAME} v${VERSION}"
+            echo "Built by Unbeated Web2App Builder - https://unbeated.com"
+            echo ""
+            echo "APP DETAILS:"
+            echo "  App Name:     ${APP_NAME}"
+            echo "  Package Name: ${PKG_NAME}"
+            echo "  Version:      ${VERSION}"
+            echo ""
+            echo "FILES INCLUDED:"
+            echo "  ${SAFE_NAME}_v${VERSION}.apk  - Install directly on any Android device"
+            echo "  ${SAFE_NAME}_v${VERSION}.aab  - Upload to Google Play Store"
+            echo ""
+            echo "HOW TO INSTALL APK ON YOUR PHONE:"
+            echo "  1. Transfer APK to your Android phone (USB, email, WhatsApp)"
+            echo "  2. On phone: Settings > Security > Enable Install unknown apps"
+            echo "  3. Open the APK file and tap Install"
+            echo ""
+            echo "HOW TO PUBLISH AAB TO GOOGLE PLAY STORE:"
+            echo "  1. Go to https://play.google.com/console"
+            echo "  2. Create a new app or open existing"
+            echo "  3. Go to Release > Production > Create new release"
+            echo "  4. Upload the .aab file and submit for review"
+            echo "  NOTE: Use package name ${PKG_NAME} when creating the app on Play Store"
+            echo ""
+            echo "Need help? Visit https://unbeated.com"
+          } > /tmp/README.txt
 
           # ── ZIP ────────────────────────────────────────────────────────
           ZIP_NAME="${SAFE_NAME}_v${VERSION}.zip"
