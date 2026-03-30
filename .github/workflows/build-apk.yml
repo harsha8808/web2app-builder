@@ -31,63 +31,63 @@ on:
         required: false
         default: "1"
       admob_app_id:
-        description: "AdMob App ID from Google AdMob console — e.g. ca-app-pub-XXXXXXXXXXXXXXXX~XXXXXXXXXX"
+        description: "AdMob App ID — e.g. ca-app-pub-XXXXXXXXXXXXXXXX~XXXXXXXXXX"
         required: true
         default: "ca-app-pub-3940256099942544~3347511713"
       banner_unit_id:
-        description: "AdMob Banner ad unit ID — e.g. ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX (leave blank to disable)"
+        description: "AdMob Banner ad unit ID (leave blank to disable)"
         required: false
         default: ""
       interstitial_unit_id:
-        description: "AdMob Interstitial ad unit ID — e.g. ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX (leave blank to disable)"
+        description: "AdMob Interstitial ad unit ID (leave blank to disable)"
         required: false
         default: ""
       rewarded_unit_id:
-        description: "AdMob Rewarded ad unit ID — e.g. ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX (leave blank to disable)"
+        description: "AdMob Rewarded ad unit ID (leave blank to disable)"
         required: false
         default: ""
       app_open_unit_id:
-        description: "AdMob App Open ad unit ID — e.g. ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX (leave blank to disable)"
+        description: "AdMob App Open ad unit ID (leave blank to disable)"
         required: false
         default: ""
       interstitial_frequency:
-        description: "Show interstitial ad every N page loads — e.g. 3 means every 3rd page"
+        description: "Show interstitial ad every N page loads — e.g. 3"
         required: false
         default: "3"
       test_mode:
-        description: "Use AdMob test ads? Set true during development, false for production"
+        description: "Use AdMob test ads? true during development, false for production"
         required: false
         default: "false"
       splash_bg_color:
-        description: "Splash screen background color (hex) — e.g. #FFFFFF for white, #000000 for black"
+        description: "Splash screen background color (hex) — e.g. #FFFFFF"
         required: false
         default: "#FFFFFF"
       splash_duration:
-        description: "Splash screen duration in milliseconds — e.g. 2000 = 2 seconds"
+        description: "Splash screen duration in milliseconds — e.g. 2000"
         required: false
         default: "2000"
       splash_tagline:
-        description: "Tagline shown on splash screen — e.g. Welcome to My App (leave blank for none)"
+        description: "Tagline shown on splash screen (leave blank for none)"
         required: false
         default: ""
       app_icon_url:
-        description: "Direct URL to app icon PNG (512x512 recommended) — e.g. https://yoursite.com/icon.png"
+        description: "Direct URL to app icon PNG (512x512) — e.g. https://yoursite.com/icon.png"
         required: false
         default: ""
       splash_logo_url:
-        description: "Direct URL to splash screen logo PNG — e.g. https://yoursite.com/logo.png (leave blank to use icon)"
+        description: "Direct URL to splash screen logo PNG (leave blank to use icon)"
         required: false
         default: ""
       google_services_url:
-        description: "Direct URL to google-services.json (required only if push notifications enabled) — e.g. https://yoursite.com/google-services.json"
+        description: "Direct URL to google-services.json (only needed if push=true)"
         required: false
         default: ""
       feature_flags:
-        description: 'Enable/disable features as JSON — banner/interstitial/rewarded/appOpen/pullRefresh/offline/progress/push'
+        description: 'Enable/disable features — {"banner":true,"interstitial":true,"rewarded":false,"appOpen":false,"pullRefresh":true,"offline":true,"progress":true,"push":false}'
         required: false
         default: '{"banner":true,"interstitial":true,"rewarded":false,"appOpen":false,"pullRefresh":true,"offline":true,"progress":true,"push":false}'
       webhook_url:
-        description: "URL to receive build status updates — Get a free test URL from webhook.site | pipedream.com | or your own backend"
+        description: "URL to receive build status — Get a free test URL from webhook.site or pipedream.com"
         required: true
         default: "https://webhook.site/your-unique-url-here"
       webhook_secret:
@@ -105,8 +105,6 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      # FIX: Checkout first so that if it fails, "Notify failed" still fires correctly.
-      # The started webhook now comes after checkout succeeds.
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -136,13 +134,10 @@ jobs:
           key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: gradle-
 
-
-      # Auto-generate a valid package name if the input is blank or invalid
       - name: Validate and auto-generate package name
         run: |
           INPUT_PKG="${{ github.event.inputs.package_name }}"
           APP_NAME="${{ github.event.inputs.app_name }}"
-          # Valid: lowercase letters/digits, at least 2 dot-separated segments
           if echo "$INPUT_PKG" | grep -qE '^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$'; then
             echo "PACKAGE_NAME=$INPUT_PKG" >> $GITHUB_ENV
             echo "Package name valid: $INPUT_PKG"
@@ -154,8 +149,6 @@ jobs:
             echo "Auto-generated package name: $AUTO_PKG (input '$INPUT_PKG' was invalid)"
           fi
 
-      # FIX: Write feature_flags to a temp file to avoid shell injection from
-      # single-quoted input being broken by special characters in the JSON value.
       - name: Parse feature flags
         run: |
           printf '%s' '${{ github.event.inputs.feature_flags }}' > /tmp/feature_flags.json
@@ -168,23 +161,16 @@ jobs:
           echo "ENABLE_PROGRESS_BAR=$(python3 -c "import json; d=json.load(open('/tmp/feature_flags.json')); print(str(d.get('progress',True)).lower())")" >> $GITHUB_ENV
           echo "ENABLE_PUSH=$(python3 -c "import json; d=json.load(open('/tmp/feature_flags.json')); print(str(d.get('push',False)).lower())")" >> $GITHUB_ENV
 
-      # FIX: Resize icon to correct dimensions per mipmap density instead of
-      # copying the same full-size file to every bucket.
+      - name: Remove FCM service if push is disabled
+        run: |
+          python3 scripts/remove-fcm.py "${{ env.ENABLE_PUSH }}"
+
       - name: Download user assets
         run: |
           if [ -n "${{ github.event.inputs.app_icon_url }}" ]; then
             curl -fsSL "${{ github.event.inputs.app_icon_url }}" -o /tmp/ic_launcher_src.png
-            declare -A DENSITIES=( [mipmap-mdpi]=48 [mipmap-hdpi]=72 [mipmap-xhdpi]=96 [mipmap-xxhdpi]=144 [mipmap-xxxhdpi]=192 )
-            for d in "${!DENSITIES[@]}"; do
-              mkdir -p "app/src/main/res/$d"
-              SIZE="${DENSITIES[$d]}"
-              python3 - <<EOF
-          from PIL import Image
-          img = Image.open("/tmp/ic_launcher_src.png").convert("RGBA")
-          img = img.resize(($SIZE, $SIZE), Image.LANCZOS)
-          img.save("app/src/main/res/$d/ic_launcher.png")
-          EOF
-            done
+            pip install Pillow --quiet --break-system-packages
+            python3 scripts/resize-icon.py
           fi
           if [ -n "${{ github.event.inputs.splash_logo_url }}" ]; then
             curl -fsSL "${{ github.event.inputs.splash_logo_url }}" -o app/src/main/res/drawable/splash_logo.png
@@ -230,7 +216,7 @@ jobs:
           ENABLE_PROGRESS_BAR:    ${{ env.ENABLE_PROGRESS_BAR }}
           ENABLE_PUSH:            ${{ env.ENABLE_PUSH }}
           SPLASH_BG_COLOR:        ${{ github.event.inputs.splash_bg_color }}
-          SPLASH_DURATION:        "${{ github.event.inputs.splash_duration }}"
+          SPLASH_DURATION:        ${{ github.event.inputs.splash_duration }}
           SPLASH_TAGLINE:         ${{ github.event.inputs.splash_tagline }}
         run: |
           echo "--- Token injection env check ---"
@@ -238,6 +224,7 @@ jobs:
           echo "PACKAGE_NAME=$PACKAGE_NAME"
           echo "WEBSITE_URL=$WEBSITE_URL"
           echo "ADMOB_APP_ID=$ADMOB_APP_ID"
+          echo "ENABLE_PUSH=$ENABLE_PUSH"
           node scripts/inject-tokens.js
 
       - name: Apply package name
@@ -276,34 +263,31 @@ jobs:
             -H "X-Webhook-Secret: ${{ github.event.inputs.webhook_secret }}" \
             -d '{"buildId":"${{ github.event.inputs.build_id }}","status":"building","step":"Packaging APK + AAB into ZIP","progress":75}'
 
-      - name: Sign and package APK + AAB into ZIP
+      - name: Package APK + AAB into ZIP
         run: |
           APP_NAME="${{ github.event.inputs.app_name }}"
           VERSION="${{ github.event.inputs.version_name }}"
-          BUILD_ID="${{ github.event.inputs.build_id }}"
           SAFE_NAME="${APP_NAME// /_}"
+          PKG_NAME="${{ env.PACKAGE_NAME }}"
 
-          # ── APK ────────────────────────────────────────────────────────
-          # Gradle already signs + zipaligns the APK when signing params are
-          # passed via -P flags. Just copy it — no jarsigner or zipalign needed.
+          # APK — Gradle already signs + zipaligns when -P signing flags are passed
           APK_FOUND=$(find app/build/outputs/apk/release/ -name "app-release.apk" | head -1)
           if [ -z "$APK_FOUND" ]; then
             echo "ERROR: app-release.apk not found!"
             find app/build/outputs/apk/ -name "*.apk"
             exit 1
           fi
-          echo "Found APK: $APK_FOUND"
           APK_FINAL="/tmp/${SAFE_NAME}_v${VERSION}.apk"
           cp "$APK_FOUND" "$APK_FINAL"
+          echo "APK ready: $APK_FINAL ($(du -h $APK_FINAL | cut -f1))"
 
-          # ── AAB ────────────────────────────────────────────────────────
+          # AAB
           AAB_FOUND=$(find app/build/outputs/bundle/release/ -name "*.aab" | head -1)
-          echo "Found AAB: $AAB_FOUND"
           AAB_FINAL="/tmp/${SAFE_NAME}_v${VERSION}.aab"
           cp "$AAB_FOUND" "$AAB_FINAL"
+          echo "AAB ready: $AAB_FINAL ($(du -h $AAB_FINAL | cut -f1))"
 
-          # ── README ─────────────────────────────────────────────────────
-          PKG_NAME="${PACKAGE_NAME}"
+          # README
           {
             echo "${APP_NAME} v${VERSION}"
             echo "Built by Unbeated Web2App Builder - https://unbeated.com"
@@ -324,18 +308,16 @@ jobs:
             echo ""
             echo "HOW TO PUBLISH AAB TO GOOGLE PLAY STORE:"
             echo "  1. Go to https://play.google.com/console"
-            echo "  2. Create a new app or open existing"
+            echo "  2. Create a new app — use package name: ${PKG_NAME}"
             echo "  3. Go to Release > Production > Create new release"
             echo "  4. Upload the .aab file and submit for review"
-            echo "  NOTE: Use package name ${PKG_NAME} when creating the app on Play Store"
             echo ""
             echo "Need help? Visit https://unbeated.com"
           } > /tmp/README.txt
 
-          # ── ZIP ────────────────────────────────────────────────────────
+          # ZIP
           ZIP_NAME="${SAFE_NAME}_v${VERSION}.zip"
           ZIP_PATH="/tmp/${ZIP_NAME}"
-
           cd /tmp && zip "$ZIP_NAME" \
             "${SAFE_NAME}_v${VERSION}.apk" \
             "${SAFE_NAME}_v${VERSION}.aab" \
@@ -343,8 +325,6 @@ jobs:
 
           echo "ZIP_PATH=$ZIP_PATH" >> $GITHUB_ENV
           echo "ZIP_FILENAME=$ZIP_NAME" >> $GITHUB_ENV
-
-          echo "── Build output ──────────────────────────────"
           ls -lh /tmp/*.apk /tmp/*.aab /tmp/*.zip
 
       - name: Notify uploading
@@ -354,8 +334,6 @@ jobs:
             -H "X-Webhook-Secret: ${{ github.event.inputs.webhook_secret }}" \
             -d '{"buildId":"${{ github.event.inputs.build_id }}","status":"building","step":"Uploading to storage","progress":88}'
 
-      # FIX: Detect R2 upload failures and fail the step so the success webhook
-      # is never sent with a broken/empty download URL.
       - name: Upload ZIP to R2
         run: |
           OBJECT_KEY="builds/${{ github.event.inputs.build_id }}/${{ env.ZIP_FILENAME }}"
@@ -372,8 +350,6 @@ jobs:
           echo "DOWNLOAD_URL=https://${{ secrets.R2_PUBLIC_DOMAIN }}/${OBJECT_KEY}" >> $GITHUB_ENV
           echo "OBJECT_KEY=$OBJECT_KEY" >> $GITHUB_ENV
 
-      # FIX: Replaced bare curl -fsSL (which exits 22 on 429) with a retry loop
-      # that backs off exponentially and only fails after 5 attempts.
       - name: Notify complete
         if: success()
         run: |
@@ -397,12 +373,10 @@ jobs:
             echo "Attempt $i got HTTP $CODE — retrying in $((i * 15))s..."
             sleep $((i * 15))
             if [ "$i" = "5" ]; then
-              echo "Webhook failed after 5 attempts (last HTTP $CODE)"
-              exit 1
+              echo "Webhook failed after 5 attempts — build is uploaded, continuing."
             fi
           done
 
-      # FIX: Added retry loop to failure webhook — same pattern as notify complete.
       - name: Notify failed
         if: failure()
         run: |
