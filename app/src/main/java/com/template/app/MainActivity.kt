@@ -10,7 +10,6 @@ import android.view.View
 import android.webkit.*
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.gms.ads.*
-import com.google.android.gms.ads.appopen.AppOpenAd
 import com.google.android.gms.ads.interstitial.InterstitialAd
 import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
 import com.google.android.gms.ads.rewarded.RewardedAd
@@ -32,12 +31,12 @@ class MainActivity : AppCompatActivity() {
     private val rewardedUnitId       = "{{REWARDED_UNIT_ID}}"
     private val interstitialFreq     = {{INTERSTITIAL_FREQUENCY}}
 
-    private val enableBanner         = "{{ENABLE_BANNER}}"         == "true"
-    private val enableInterstitial   = "{{ENABLE_INTERSTITIAL}}"   == "true"
-    private val enableRewarded       = "{{ENABLE_REWARDED}}"       == "true"
-    private val enablePullToRefresh  = "{{ENABLE_PULL_TO_REFRESH}}"== "true"
-    private val enableProgressBar    = "{{ENABLE_PROGRESS_BAR}}"   == "true"
-    private val enableOfflinePage    = "{{ENABLE_OFFLINE_PAGE}}"   == "true"
+    private val enableBanner         = "{{ENABLE_BANNER}}"          == "true"
+    private val enableInterstitial   = "{{ENABLE_INTERSTITIAL}}"    == "true"
+    private val enableRewarded       = "{{ENABLE_REWARDED}}"        == "true"
+    private val enablePullToRefresh  = "{{ENABLE_PULL_TO_REFRESH}}" == "true"
+    private val enableProgressBar    = "{{ENABLE_PROGRESS_BAR}}"    == "true"
+    private val enableOfflinePage    = "{{ENABLE_OFFLINE_PAGE}}"    == "true"
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
 
@@ -76,15 +75,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupWebView() {
         binding.webView.settings.apply {
-            javaScriptEnabled        = true
-            domStorageEnabled        = true
-            loadWithOverviewMode     = true
-            useWideViewPort          = true
+            javaScriptEnabled                = true
+            domStorageEnabled                = true
+            loadWithOverviewMode             = true
+            useWideViewPort                  = true
             setSupportZoom(false)
-            builtInZoomControls      = false
-            displayZoomControls      = false
-            mixedContentMode         = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-            cacheMode                = WebSettings.LOAD_DEFAULT
+            builtInZoomControls              = false
+            displayZoomControls              = false
+            mixedContentMode                 = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            cacheMode                        = WebSettings.LOAD_DEFAULT
             mediaPlaybackRequiresUserGesture = false
         }
 
@@ -108,7 +107,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            // Keep same-domain links in WebView; open external links in browser
             override fun shouldOverrideUrlLoading(
                 view: WebView,
                 request: WebResourceRequest
@@ -116,10 +114,10 @@ class MainActivity : AppCompatActivity() {
                 val reqHost  = request.url.host ?: return false
                 val siteHost = Uri.parse(websiteUrl).host ?: return false
                 return if (reqHost == siteHost || reqHost.endsWith(".$siteHost")) {
-                    false // load in WebView
+                    false
                 } else {
                     startActivity(Intent(Intent.ACTION_VIEW, request.url))
-                    true  // handled externally
+                    true
                 }
             }
         }
@@ -127,7 +125,7 @@ class MainActivity : AppCompatActivity() {
         binding.webView.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView, newProgress: Int) {
                 if (!enableProgressBar) return
-                binding.progressBar.progress = newProgress
+                binding.progressBar.progress   = newProgress
                 binding.progressBar.visibility =
                     if (newProgress < 100) View.VISIBLE else View.GONE
             }
@@ -137,9 +135,7 @@ class MainActivity : AppCompatActivity() {
     private fun setupSwipeRefresh() {
         binding.swipeRefresh.isEnabled = enablePullToRefresh
         binding.swipeRefresh.setOnRefreshListener { binding.webView.reload() }
-        binding.swipeRefresh.setColorSchemeColors(
-            getColor(R.color.colorPrimary)
-        )
+        binding.swipeRefresh.setColorSchemeColors(getColor(R.color.colorPrimary))
     }
 
     private fun setupProgressBar() {
@@ -161,9 +157,7 @@ class MainActivity : AppCompatActivity() {
         InterstitialAd.load(
             this, interstitialUnitId, AdRequest.Builder().build(),
             object : InterstitialAdLoadCallback() {
-                override fun onAdLoaded(ad: InterstitialAd) {
-                    interstitialAd = ad
-                }
+                override fun onAdLoaded(ad: InterstitialAd) { interstitialAd = ad }
                 override fun onAdFailedToLoad(err: LoadAdError) {
                     interstitialAd = null
                     binding.webView.postDelayed({ loadInterstitialAd() }, 30_000)
@@ -194,7 +188,7 @@ class MainActivity : AppCompatActivity() {
         rewardedAd?.show(this) {
             onRewarded()
             loadRewardedAd()
-        } ?: run { onRewarded() } // fallback: grant reward even if no ad loaded
+        } ?: run { onRewarded() }
     }
 
     // ── JS Bridge ─────────────────────────────────────────────────────────
@@ -228,7 +222,20 @@ class MainActivity : AppCompatActivity() {
         else super.onBackPressed()
     }
 
-    override fun onPause()   { super.onPause();  binding.bannerAdView.pause() }
-    override fun onResume()  { super.onResume(); binding.bannerAdView.resume() }
-    override fun onDestroy() { super.onDestroy(); binding.bannerAdView.destroy() }
+    // FIX: Guard all bannerAdView lifecycle calls — crashes if banner is disabled
+    // because the view is never initialized when enableBanner = false
+    override fun onPause() {
+        super.onPause()
+        if (enableBanner) binding.bannerAdView.pause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (enableBanner) binding.bannerAdView.resume()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (enableBanner) binding.bannerAdView.destroy()
+    }
 }
