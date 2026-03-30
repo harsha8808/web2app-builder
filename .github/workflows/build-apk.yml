@@ -230,11 +230,15 @@ jobs:
           ENABLE_PROGRESS_BAR:    ${{ env.ENABLE_PROGRESS_BAR }}
           ENABLE_PUSH:            ${{ env.ENABLE_PUSH }}
           SPLASH_BG_COLOR:        ${{ github.event.inputs.splash_bg_color }}
-          # FIX: Coerce splash_duration to integer so inject-tokens.js never
-          # receives a bare string where a number is expected.
-          SPLASH_DURATION:        ${{ fromJSON(github.event.inputs.splash_duration) }}
+          SPLASH_DURATION:        "${{ github.event.inputs.splash_duration }}"
           SPLASH_TAGLINE:         ${{ github.event.inputs.splash_tagline }}
-        run: node scripts/inject-tokens.js
+        run: |
+          echo "--- Token injection env check ---"
+          echo "APP_NAME=$APP_NAME"
+          echo "PACKAGE_NAME=$PACKAGE_NAME"
+          echo "WEBSITE_URL=$WEBSITE_URL"
+          echo "ADMOB_APP_ID=$ADMOB_APP_ID"
+          node scripts/inject-tokens.js
 
       - name: Apply package name
         env:
