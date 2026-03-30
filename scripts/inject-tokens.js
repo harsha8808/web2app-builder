@@ -15,13 +15,13 @@ const TEST_IDS = {
   appId:         'ca-app-pub-3940256099942544~3347511713',
 };
 
-const isTest = process.env.TEST_MODE === 'true';
+const isTest      = process.env.TEST_MODE   === 'true';
+const pushEnabled = process.env.ENABLE_PUSH === 'true';
 
 function extractDomain(url) {
   try { return new URL(url).hostname; } catch { return url; }
 }
 
-// Use test AdMob App ID as fallback so the app never crashes from a missing ID
 const admobAppId = process.env.ADMOB_APP_ID || TEST_IDS.appId;
 
 const tokens = {
@@ -32,10 +32,10 @@ const tokens = {
   '{{WEBSITE_URL}}':            process.env.WEBSITE_URL,
   '{{WEBSITE_DOMAIN}}':         extractDomain(process.env.WEBSITE_URL || ''),
   '{{ADMOB_APP_ID}}':           admobAppId,
-  '{{BANNER_UNIT_ID}}':         isTest ? TEST_IDS.banner        : (process.env.BANNER_UNIT_ID       || TEST_IDS.banner),
-  '{{INTERSTITIAL_UNIT_ID}}':   isTest ? TEST_IDS.interstitial  : (process.env.INTERSTITIAL_UNIT_ID || TEST_IDS.interstitial),
-  '{{REWARDED_UNIT_ID}}':       isTest ? TEST_IDS.rewarded      : (process.env.REWARDED_UNIT_ID     || TEST_IDS.rewarded),
-  '{{APP_OPEN_UNIT_ID}}':       isTest ? TEST_IDS.appOpen       : (process.env.APP_OPEN_UNIT_ID     || TEST_IDS.appOpen),
+  '{{BANNER_UNIT_ID}}':         isTest ? TEST_IDS.banner       : (process.env.BANNER_UNIT_ID       || TEST_IDS.banner),
+  '{{INTERSTITIAL_UNIT_ID}}':   isTest ? TEST_IDS.interstitial : (process.env.INTERSTITIAL_UNIT_ID || TEST_IDS.interstitial),
+  '{{REWARDED_UNIT_ID}}':       isTest ? TEST_IDS.rewarded     : (process.env.REWARDED_UNIT_ID     || TEST_IDS.rewarded),
+  '{{APP_OPEN_UNIT_ID}}':       isTest ? TEST_IDS.appOpen      : (process.env.APP_OPEN_UNIT_ID     || TEST_IDS.appOpen),
   '{{INTERSTITIAL_FREQUENCY}}': process.env.INTERSTITIAL_FREQUENCY || '3',
   '{{ENABLE_BANNER}}':          process.env.ENABLE_BANNER          || 'true',
   '{{ENABLE_INTERSTITIAL}}':    process.env.ENABLE_INTERSTITIAL    || 'true',
@@ -57,10 +57,16 @@ if (missing.length) {
   process.exit(1);
 }
 
-// Warn if using fallback AdMob ID
 if (!process.env.ADMOB_APP_ID) {
   console.warn('WARNING: ADMOB_APP_ID not set — using Google test App ID as fallback');
 }
+
+console.log(`Injecting tokens (test mode: ${isTest}, push enabled: ${pushEnabled})...`);
+console.log(`  ADMOB_APP_ID  = ${admobAppId}`);
+console.log(`  WEBSITE_URL   = ${tokens['{{WEBSITE_URL}}']}`);
+console.log(`  PACKAGE_NAME  = ${tokens['{{PACKAGE_NAME}}']}`);
+console.log(`  APP_NAME      = ${tokens['{{APP_NAME}}']}`);
+console.log(`  ENABLE_PUSH   = ${pushEnabled}`);
 
 const TEXT_EXTS = new Set(['.kt','.java','.xml','.gradle','.properties','.json','.html','.txt']);
 const SKIP_DIRS = new Set(['.gradle','build','.git','node_modules','.github','scripts']);
@@ -75,7 +81,26 @@ function walk(dir) {
       continue;
     }
     if (!TEXT_EXTS.has(path.extname(entry.name).toLowerCase())) continue;
+
     let src = fs.readFileSync(full, 'utf8'), changed = false;
+
+    // Handle FCM push service block in AndroidManifest.xml
+    // Block is wrapped between {{PUSH_SERVICE_START}} and {{PUSH_SERVICE_END}} markers
+    if (src.includes('{{PUSH_SERVICE_START}}')) {
+      if (!pushEnabled) {
+        // Remove entire block including the service tag
+        src = src.replace(/[ \t]*<!--[ \t]*\{\{PUSH_SERVICE_START\}\}[\s\S]*?<!--[ \t]*\{\{PUSH_SERVICE_END\}\}[ \t]*-->[ \t]*\n?/m, '');
+        console.log(`  ✓ Removed FCM push service block from ${full}`);
+      } else {
+        // Push enabled — strip marker comments but keep the service block
+        src = src.replace(/[ \t]*<!--[ \t]*\{\{PUSH_SERVICE_START\}\}[^\n]*-->\n?/m, '');
+        src = src.replace(/[ \t]*<!--[ \t]*\{\{PUSH_SERVICE_END\}\}[ \t]*-->\n?/m, '');
+        console.log(`  ✓ Kept FCM push service block in ${full}`);
+      }
+      changed = true;
+    }
+
+    // Replace all {{TOKEN}} placeholders
     for (const [k, v] of Object.entries(tokens)) {
       if (v != null && src.includes(k)) {
         src = src.split(k).join(v);
@@ -83,6 +108,7 @@ function walk(dir) {
         replacements++;
       }
     }
+
     if (changed) {
       fs.writeFileSync(full, src, 'utf8');
       files++;
@@ -91,18 +117,11 @@ function walk(dir) {
   }
 }
 
-console.log(`Injecting tokens (test mode: ${isTest})...`);
-console.log(`  ADMOB_APP_ID  = ${admobAppId}`);
-console.log(`  WEBSITE_URL   = ${tokens['{{WEBSITE_URL}}']}`);
-console.log(`  PACKAGE_NAME  = ${tokens['{{PACKAGE_NAME}}']}`);
-console.log(`  APP_NAME      = ${tokens['{{APP_NAME}}']}`);
 walk(process.cwd());
 console.log(`Done — ${files} files, ${replacements} replacements.`);
 
-// Verify critical tokens were replaced
-const criticalFiles = [
-  'app/src/main/AndroidManifest.xml',
-];
+// Verify no unreplaced tokens remain in critical files
+const criticalFiles = ['app/src/main/AndroidManifest.xml'];
 let verifyFailed = false;
 for (const f of criticalFiles) {
   if (!fs.existsSync(f)) continue;
