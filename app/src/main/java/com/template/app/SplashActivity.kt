@@ -12,7 +12,8 @@ class SplashActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivitySplashBinding
 
-    private val splashDuration = {{SPLASH_DURATION}}L
+    // FIX: Using toLongOrNull to prevent build-time crashes if duration is malformed
+    private val splashDuration = "{{SPLASH_DURATION}}".toLongOrNull() ?: 2000L
     private val tagline        = "{{SPLASH_TAGLINE}}"
 
     override fun onCreate(savedInstanceState: Bundle?) {
