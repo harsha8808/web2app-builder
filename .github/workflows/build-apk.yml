@@ -347,7 +347,7 @@ jobs:
             cat /tmp/r2_response.txt
             exit 1
           fi
-          echo "DOWNLOAD_URL=https://${{ secrets.R2_PUBLIC_DOMAIN }}/${OBJECT_KEY}" >> $GITHUB_ENV
+          echo "DOWNLOAD_URL=${{ secrets.R2_PUBLIC_DOMAIN }}/${OBJECT_KEY}" >> $GITHUB_ENV
           echo "OBJECT_KEY=$OBJECT_KEY" >> $GITHUB_ENV
 
       - name: Notify complete
