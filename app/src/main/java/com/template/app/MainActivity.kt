@@ -146,8 +146,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupBannerAd() {
         binding.bannerAdView.visibility = View.VISIBLE
-        binding.bannerAdView.adUnitId   = bannerUnitId
-        binding.bannerAdView.setAdSize(AdSize.BANNER)
+        // NOTE: AdUnitId and Size are now set in activity_main.xml ONLY
         binding.bannerAdView.loadAd(AdRequest.Builder().build())
     }
 
@@ -222,8 +221,6 @@ class MainActivity : AppCompatActivity() {
         else super.onBackPressed()
     }
 
-    // FIX: Guard all bannerAdView lifecycle calls — crashes if banner is disabled
-    // because the view is never initialized when enableBanner = false
     override fun onPause() {
         super.onPause()
         if (enableBanner) binding.bannerAdView.pause()
